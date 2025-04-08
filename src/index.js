@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import { search } from '@buger/probe';
 import simpleGit from 'simple-git';
 import axios from 'axios'; // Import axios
-import tar from 'tar'; // Import tar
+import * as tar from 'tar'; // Import tar using namespace
 import { loadConfig } from './config.js';
 
 // Get the package.json to determine the version
@@ -240,7 +240,74 @@ class DocsMcpServer {
 		}
 	}
 
-	// downloadAndExtractTarballRuntime function is already present from previous attempt
+	/**
+		* Downloads and extracts a tarball archive from a Git repository URL.
+		* Assumes GitHub URL structure for archive download.
+		* @private
+		*/
+	async downloadAndExtractTarballRuntime() {
+		// Basic parsing for GitHub URLs (can be made more robust)
+		const match = config.gitUrl.match(/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/);
+		if (!match) {
+			console.error(`Cannot determine tarball URL from gitUrl: ${config.gitUrl}. Cannot proceed.`);
+			throw new Error('Invalid or unsupported Git URL for tarball download.');
+		}
+
+		const owner = match[1];
+		const repo = match[2];
+		let ref = config.gitRef || 'main'; // Start with configured ref or default 'main'
+
+		const downloadAttempt = async (currentRef) => {
+			const tarballUrl = `https://github.com/${owner}/${repo}/archive/${currentRef}.tar.gz`;
+			console.log(`Attempting to download archive (${currentRef}) from ${tarballUrl} to ${config.dataDir}...`);
+
+			// Clear directory before extracting
+			await fs.emptyDir(config.dataDir);
+
+			const response = await axios({
+				method: 'get',
+				url: tarballUrl,
+				responseType: 'stream',
+				validateStatus: (status) => status >= 200 && status < 300, // Don't throw for non-2xx
+			});
+
+			// Pipe the download stream directly to tar extractor
+			await new Promise((resolve, reject) => {
+				response.data
+					.pipe(
+						tar.x({
+							strip: 1, // Remove the top-level directory
+							C: config.dataDir, // Extract to dataDir
+						})
+					)
+					.on('finish', resolve)
+					.on('error', reject);
+			});
+			console.log(`Successfully downloaded and extracted archive (${currentRef}) to ${config.dataDir}`);
+		};
+
+		try {
+			await downloadAttempt(ref);
+		} catch (error) {
+			// Check if it was a 404 error and we tried 'main'
+			if (ref === 'main' && error.response && error.response.status === 404) {
+				console.warn(`Download failed for ref 'main' (404). Retrying with 'master'...`);
+				ref = 'master'; // Set ref to master for the retry
+				try {
+					await downloadAttempt(ref);
+				} catch (retryError) {
+					console.error(`Retry with 'master' also failed: ${retryError.message}`);
+					// Unlike build, we might not want to fallback to clone here, just fail.
+					throw new Error(`Failed to download archive for both 'main' and 'master' refs.`);
+				}
+			} else {
+				// Handle other errors or failures when not using 'main'
+				console.error(`Error downloading or extracting tarball (${ref}): ${error.message}`);
+				throw error; // Re-throw original error
+			}
+		}
+	}
+
 	async run() {
 		try {
 			console.error("Starting Docs MCP server...");

@@ -129,6 +129,7 @@ Create a `docs-mcp.config.json` file in the root directory to define the **defau
 - `toolName`: **(Build/Runtime)** The name of the MCP tool exposed by the server (default: `search_docs`). Choose a descriptive name relevant to the content.
 - `toolDescription`: **(Build/Runtime)** The description of the MCP tool shown to AI assistants (default: "Search documentation using the probe search engine.").
 - `ignorePatterns`: **(Build/Runtime)** An array of glob patterns.
+- `enableBuildCleanup`: **(Build)** If `true` (default), removes common binary/media files (images, videos, archives, etc.) and files larger than 100KB from the `data` directory after the build step. Set to `false` to disable this cleanup.
     - If using `includeDir` during build: Files matching these patterns are excluded when copying to `data`. `.gitignore` rules are also respected.
     - If using `gitUrl` or `dataDir` at runtime: Files matching these patterns within the `data` directory are ignored by the search indexer.
 

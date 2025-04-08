@@ -19,7 +19,7 @@ const defaultConfig = {
 	gitRef: 'main',
 
 	// Auto-update interval in minutes (0 to disable)
-	autoUpdateInterval: 5,
+	autoUpdateInterval: 0, // Default to 0 (disabled)
 
 	// Data directory for searching
 	dataDir: path.resolve(__dirname, '..', 'data'),
@@ -35,7 +35,9 @@ const defaultConfig = {
 		'dist',
 		'build',
 		'coverage'
-	]
+	],
+	// Enable cleanup of large/binary files after build (default: true)
+	enableBuildCleanup: true
 };
 
 /**
@@ -81,6 +83,7 @@ export function loadConfig() {
 	if (args.dataDir) config.dataDir = args.dataDir;
 	if (args.toolName) config.toolName = args.toolName;
 	if (args.toolDescription) config.toolDescription = args.toolDescription;
+	if (args.enableBuildCleanup !== undefined) config.enableBuildCleanup = args.enableBuildCleanup === true || args.enableBuildCleanup === 'true';
 
 	// Ensure dataDir is an absolute path
 	if (!path.isAbsolute(config.dataDir)) {
