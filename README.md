@@ -2,7 +2,7 @@
 
 This is a pre-built [Model Context Protocol (MCP)](https://github.com/probe-ai/probe-docs-mcp) server for Tyk documentation, designed to enable AI assistants to search the Tyk API Management documentation using natural language queries.
 
-Built on top of the [`@buger/probe-docs-mcp`](https://github.com/buger/probe-docs-mcp) project, this package comes with Tyk’s documentation already bundled, offering a plug-and-play experience.
+Built on top of the [`@buger/probe-docs-mcp`](https://github.com/buger/docs-mcp) project, this package comes with Tyk’s documentation already bundled, offering a plug-and-play experience.
 
 ## Usage
 
