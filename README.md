@@ -14,6 +14,23 @@ npx -y @tyk-technologies/docs-mcp@latest
 
 This will start a local MCP server with a tool named `search_tyk_docs`, exposing the Tyk documentation to connected AI assistants.
 
+If you are using MCP JSON configuration you can use this snippet:
+
+```
+"mcpServers": {
+    ...
+    "tyk-docs-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@tyk-technologies/docs-mcp@latest",
+      ],
+      "enabled": true
+    }
+    ...
+}
+```
+
 ## Configuration
 
 No configuration is required. All content and settings (tool name, description, source) are pre-bundled.
