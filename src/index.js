@@ -15,6 +15,7 @@ import simpleGit from 'simple-git';
 import axios from 'axios'; // Import axios
 import * as tar from 'tar'; // Import tar using namespace
 import { loadConfig } from './config.js';
+import minimist from 'minimist'; // Import minimist to check runtime args
 
 // Get the package.json to determine the version
 const __filename = fileURLToPath(import.meta.url);
@@ -36,13 +37,13 @@ try {
 	console.error(`Error reading package.json:`, error);
 }
 
-// Load configuration
+// Load configuration (handles defaults, file, env, args precedence)
 const config = loadConfig();
 
 // Git instance - initialize lazily only if needed for auto-updates
 let git = null;
 
-// Ensure the data directory exists
+// Ensure the data directory exists (might be empty initially)
 try {
 	fs.ensureDirSync(config.dataDir);
 	console.error(`Ensured data directory exists: ${config.dataDir}`);
@@ -206,7 +207,7 @@ class DocsMcpServer {
 	 * @private
 	 */
 	async checkForUpdates() {
-		if (!config.gitUrl) return; // Only update if gitUrl is configured
+		if (!config.gitUrl || !git) return; // Only update if gitUrl is configured and git is initialized
 
 		console.log('Checking for documentation updates...');
 		try {
@@ -241,10 +242,10 @@ class DocsMcpServer {
 	}
 
 	/**
-		* Downloads and extracts a tarball archive from a Git repository URL.
-		* Assumes GitHub URL structure for archive download.
-		* @private
-		*/
+	 * Downloads and extracts a tarball archive from a Git repository URL.
+	 * Assumes GitHub URL structure for archive download.
+	 * @private
+	 */
 	async downloadAndExtractTarballRuntime() {
 		// Basic parsing for GitHub URLs (can be made more robust)
 		const match = config.gitUrl.match(/github\.com\/([^/]+)\/([^/]+?)(\.git)?$/);
@@ -286,27 +287,28 @@ class DocsMcpServer {
 			console.log(`Successfully downloaded and extracted archive (${currentRef}) to ${config.dataDir}`);
 		};
 
-		try {
+		try { // Outer try block
 			await downloadAttempt(ref);
 		} catch (error) {
 			// Check if it was a 404 error and we tried 'main'
 			if (ref === 'main' && error.response && error.response.status === 404) {
 				console.warn(`Download failed for ref 'main' (404). Retrying with 'master'...`);
 				ref = 'master'; // Set ref to master for the retry
-				try {
+				try { // Inner try block for master retry
 					await downloadAttempt(ref);
 				} catch (retryError) {
 					console.error(`Retry with 'master' also failed: ${retryError.message}`);
 					// Unlike build, we might not want to fallback to clone here, just fail.
 					throw new Error(`Failed to download archive for both 'main' and 'master' refs.`);
-				}
-			} else {
-				// Handle other errors or failures when not using 'main'
+				} // End of inner try block for master retry
+			} else { // This else belongs to the outer try/catch
+				// Handle other errors (non-404 on 'main', or any error on 'master' or specific ref)
 				console.error(`Error downloading or extracting tarball (${ref}): ${error.message}`);
 				throw error; // Re-throw original error
 			}
-		}
+		} // End of outer try block
 	}
+
 
 	async run() {
 		try {
@@ -321,34 +323,68 @@ class DocsMcpServer {
 				console.error(`Using static directory: ${config.includeDir}`);
 			}
 
-			// Handle content source initialization
-			if (config.gitUrl) {
+			// --- Check for Runtime Overrides and Pre-built Data ---
+			const args = minimist(process.argv.slice(2));
+			const runtimeOverride = args.dataDir || args.gitUrl || args.includeDir ||
+				process.env.DATA_DIR || process.env.GIT_URL || process.env.INCLUDE_DIR;
+
+			let usePrebuiltData = false;
+			if (!runtimeOverride) {
+				// No runtime overrides, check if default dataDir (inside package) has content
+				try {
+					// config.dataDir should point to the default 'data' dir inside the package here
+					if (fs.existsSync(config.dataDir)) {
+						const items = await fs.readdir(config.dataDir);
+						if (items.length > 0) {
+							usePrebuiltData = true;
+							console.error(`Detected non-empty default data directory. Using pre-built content from ${config.dataDir}.`);
+						} else {
+							console.error(`Default data directory ${config.dataDir} exists but is empty. Will attempt fetch based on config.`);
+						}
+					} else {
+						// This case should be rare if build script ran correctly
+						console.error(`Default data directory ${config.dataDir} does not exist. Will attempt fetch based on config.`);
+					}
+				} catch (readDirError) {
+					console.error(`Error checking default data directory ${config.dataDir}:`, readDirError);
+					// Proceed to fetch based on config as we can't confirm pre-built state
+				}
+			} else {
+				console.error('Runtime content source override detected. Ignoring pre-built data check.');
+			}
+			// --- End Check ---
+
+
+			// --- Handle Content Source Initialization ---
+			if (usePrebuiltData) {
+				// Skip fetching, use existing data
+				console.error("Skipping content fetch, using pre-built data.");
+				if (updateTimer) clearTimeout(updateTimer); // Ensure no updates are scheduled
+				updateTimer = null;
+			} else if (config.gitUrl) {
+				// --- Attempt fetch via Git URL (Tarball or Clone) ---
 				if (config.autoUpdateInterval > 0) {
 					// --- Auto-update enabled: Use Git ---
 					console.error(`Auto-update enabled. Initializing Git for ${config.dataDir}...`);
-					// Initialize git instance only when needed for updates
-					if (!git) git = simpleGit(config.dataDir);
+					if (!git) git = simpleGit(config.dataDir); // Initialize git instance only when needed
 					const isRepo = await git.checkIsRepo();
 
 					if (!isRepo) {
 						console.error(`Directory ${config.dataDir} is not a Git repository. Attempting initial clone...`);
 						try {
-							const items = await fs.readdir(config.dataDir);
-							if (items.length > 0) {
-								console.warn(`Data directory ${config.dataDir} is not empty. Clearing before cloning.`);
-								await fs.emptyDir(config.dataDir);
-							}
-							// Use a separate simpleGit instance for the clone command itself
+							// Ensure directory is empty before cloning
+							await fs.emptyDir(config.dataDir);
 							await simpleGit().clone(config.gitUrl, config.dataDir, ['--branch', config.gitRef, '--depth', '1']);
 							console.error(`Successfully cloned ${config.gitUrl} to ${config.dataDir}`);
 						} catch (cloneError) {
 							console.error(`Error during initial clone:`, cloneError);
-							process.exit(1); // Exit if initial setup fails
+							process.exit(1);
 						}
-					} else {
-						console.error(`Directory ${config.dataDir} is a Git repository. Proceeding with update check.`);
-						await this.checkForUpdates(); // Run initial check, then schedule next
 					}
+					// If it was already a repo OR clone succeeded, check for updates
+					console.error(`Directory ${config.dataDir} is a Git repository. Proceeding with update check.`);
+					await this.checkForUpdates(); // Run initial check, then schedule next
+
 				} else {
 					// --- Auto-update disabled: Use Tarball Download ---
 					console.error(`Auto-update disabled. Initializing content from tarball for ${config.gitUrl}...`);
@@ -356,25 +392,26 @@ class DocsMcpServer {
 						await this.downloadAndExtractTarballRuntime();
 					} catch (tarballError) {
 						console.error(`Failed to initialize from tarball:`, tarballError);
-						// Exit if tarball download fails, as content won't be available
 						process.exit(1);
 					}
-					// Do not schedule updates
 					if (updateTimer) clearTimeout(updateTimer);
-					updateTimer = null; // Ensure timer is nullified
+					updateTimer = null;
 				}
-			} else if (config.includeDir) {
-				// Static directory case - content should exist from build step or manual placement
-				console.error(`Using static content from ${config.dataDir} (originally sourced from ${config.includeDir})`);
-				// Clear any potential update timer if switching from a Git config
+			} else if (config.includeDir && !runtimeOverride) {
+				// --- Use includeDir from config ONLY if no runtime override and no prebuilt data found ---
+				console.error(`Warning: Config specifies includeDir (${config.includeDir}) but data dir (${config.dataDir}) is empty/missing and no runtime override provided. Data might be missing if build step wasn't run or failed.`);
 				if (updateTimer) clearTimeout(updateTimer);
 				updateTimer = null;
-			} else {
-				// No content source specified at runtime - dataDir might be empty or contain pre-built content
-				console.error(`No gitUrl or includeDir specified at runtime. Using content in ${config.dataDir}.`);
+			} else if (!runtimeOverride) {
+				// No runtime override, no prebuilt data, no gitUrl, no includeDir in config
+				console.error(`No content source specified and no pre-built data found in ${config.dataDir}. Server may have no data to search.`);
 				if (updateTimer) clearTimeout(updateTimer);
 				updateTimer = null;
 			}
+			// If runtimeOverride was set, the config loading already handled setting config.dataDir/gitUrl etc.
+			// and the logic above will use those values if usePrebuiltData is false.
+			// --- End Content Source Initialization ---
+
 
 			// Connect the server to the transport
 			const transport = new StdioServerTransport();
