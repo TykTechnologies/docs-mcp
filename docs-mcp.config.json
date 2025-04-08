@@ -1,7 +1,7 @@
 {
-  "includeDir": "./site",
-  "toolName": "search_docs",
-  "toolDescription": "Search documentation using the probe search engine.",
+  "toolName": "search_tyk_docs",
+  "toolDescription": "Search Tyk API management documentation",
+  "gitUrl": "https://github.com/TykTechnologies/tyk-docs",
   "ignorePatterns": [
     "node_modules",
     ".git",
