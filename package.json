@@ -1,7 +1,7 @@
 {
-  "name": "@buger/docs-mcp",
+  "name": "@tyk-technologies/docs-mcp",
   "version": "0.1.0",
-  "description": "Using probe MCP for documentation search",
+  "description": "Access Tyk API Management Documentation as MCP tool",
   "type": "module",
   "main": "src/index.js",
   "bin": {
