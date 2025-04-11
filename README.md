@@ -23,7 +23,7 @@ If you are using MCP JSON configuration you can use this snippet:
       "command": "npx",
       "args": [
         "-y",
-        "@tyk-technologies/docs-mcp@latest",
+        "@tyk-technologies/docs-mcp@latest"
       ],
       "enabled": true
     }
