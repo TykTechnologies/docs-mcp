@@ -13,7 +13,7 @@ echo "Building the docs-mcp example..."
 node scripts/build.js
 
 # Make the executable script executable
-chmod +x bin/probe-docs-mcp
+chmod +x bin/mcp.js
 
 echo "Setup completed successfully!"
 echo "You can now run the example with: ./bin/probe-docs-mcp"
