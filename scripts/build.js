@@ -266,7 +266,7 @@ async function build() {
 		}
 
 		// Make the bin script executable
-		const binPath = path.join(rootDir, 'bin', 'mcp');
+		const binPath = path.join(rootDir, 'bin', 'mcp.js');
 		await fs.chmod(binPath, 0o755);
 		console.log(`Made bin script executable: ${binPath}`);
 
